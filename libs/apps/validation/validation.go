@@ -3,6 +3,8 @@ package validation
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 )
 
 // ValidationDetail contains detailed output from a failed validation.
@@ -52,4 +54,16 @@ func (vr *ValidateResult) String() string {
 // Validation defines the interface for project validation strategies.
 type Validation interface {
 	Validate(ctx context.Context, workDir string) (*ValidateResult, error)
+}
+
+// GetProjectValidator returns the appropriate validator based on project type.
+// Returns nil if no validator is applicable.
+func GetProjectValidator(workDir string) Validation {
+	// Check for Node.js project (package.json exists)
+	packageJSON := filepath.Join(workDir, "package.json")
+	if _, err := os.Stat(packageJSON); err == nil {
+		return &ValidationNodeJs{}
+	}
+	// TODO: Extend this with other project types as needed (e.g. python, etc.)
+	return nil
 }

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/databricks/cli/bundle"
 	"github.com/databricks/cli/bundle/resources"
@@ -111,7 +110,7 @@ func runBundleDeploy(cmd *cobra.Command, force, skipValidation bool) error {
 
 	// Step 1: Validate project (unless skipped)
 	if !skipValidation {
-		validator := getProjectValidator(workDir)
+		validator := validation.GetProjectValidator(workDir)
 		if validator != nil {
 			result, err := validator.Validate(ctx, workDir)
 			if err != nil {
@@ -163,17 +162,6 @@ func runBundleDeploy(cmd *cobra.Command, force, skipValidation bool) error {
 	}
 
 	cmdio.LogString(ctx, "✔ Deployment complete!")
-	return nil
-}
-
-// getProjectValidator returns the appropriate validator based on project type.
-// Returns nil if no validator is applicable.
-func getProjectValidator(workDir string) validation.Validation {
-	// Check for Node.js project (package.json exists)
-	packageJSON := filepath.Join(workDir, "package.json")
-	if _, err := os.Stat(packageJSON); err == nil {
-		return &validation.ValidationNodeJs{}
-	}
 	return nil
 }
 

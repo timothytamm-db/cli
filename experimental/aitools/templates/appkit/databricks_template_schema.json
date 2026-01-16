@@ -10,7 +10,6 @@
       "sql_warehouse_id": {
         "type": "string",
         "description": "SQL Warehouse ID",
-        "default": "",
         "order": 2
       },
       "profile": {

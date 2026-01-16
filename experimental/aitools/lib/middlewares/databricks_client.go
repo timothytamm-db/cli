@@ -9,7 +9,6 @@ import (
 	"github.com/databricks/cli/experimental/aitools/lib/mcp"
 	"github.com/databricks/cli/experimental/aitools/lib/prompts"
 	"github.com/databricks/cli/experimental/aitools/lib/session"
-	"github.com/databricks/cli/libs/cmdctx"
 	"github.com/databricks/cli/libs/databrickscfg/profile"
 	"github.com/databricks/databricks-sdk-go"
 	"github.com/databricks/databricks-sdk-go/config"
@@ -135,16 +134,16 @@ func newAuthError(ctx context.Context) error {
 }
 
 // GetDefaultCatalog fetches the workspace default catalog name.
-// Returns empty string if UC is not available or no default catalog is set.
+// Returns empty string if Unity Catalog is not available or on error.
 func GetDefaultCatalog(ctx context.Context) string {
-	w := cmdctx.WorkspaceClient(ctx)
-	if w == nil {
+	w, err := GetDatabricksClient(ctx)
+	if err != nil {
 		return ""
 	}
 
 	metastore, err := w.Metastores.Current(ctx)
 	if err != nil {
-		return ""
+		return "" // gracefully handle any error (no UC, permission denied, etc.)
 	}
 
 	return metastore.DefaultCatalogName

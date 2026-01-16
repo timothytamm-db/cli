@@ -49,18 +49,7 @@ After initialization:
 			return errors.New("--name is required. Example: init-template job --name my_job")
 		}
 
-		configMap := map[string]any{
-			"project_name":     name,
-			"include_job":      "yes",
-			"include_pipeline": "no",
-			"include_python":   "yes",
-			"serverless":       "yes",
-			"personal_schemas": "yes",
-		}
-
-		if catalog != "" {
-			configMap["default_catalog"] = catalog
-		}
+		configMap := buildJobConfigMap(name, catalog)
 
 		return MaterializeTemplate(ctx, TemplateConfig{
 			TemplatePath: string(template.DefaultPython),
@@ -68,4 +57,21 @@ After initialization:
 		}, configMap, name, outputDir)
 	}
 	return cmd
+}
+
+// buildJobConfigMap creates the config map for job template materialization.
+// If catalog is empty, default_catalog is omitted so the template schema default is used.
+func buildJobConfigMap(name, catalog string) map[string]any {
+	configMap := map[string]any{
+		"project_name":     name,
+		"include_job":      "yes",
+		"include_pipeline": "no",
+		"include_python":   "yes",
+		"serverless":       "yes",
+		"personal_schemas": "yes",
+	}
+	if catalog != "" {
+		configMap["default_catalog"] = catalog
+	}
+	return configMap
 }

@@ -182,10 +182,16 @@ func promptForFeaturesAndDeps(ctx context.Context, preSelectedFeatures []string)
 			Description("space to toggle, enter to confirm").
 			Options(options...).
 			Value(&config.Features).
+			Height(8).
 			WithTheme(theme).
 			Run()
 		if err != nil {
 			return nil, err
+		}
+		if len(config.Features) == 0 {
+			prompt.PrintAnswered("Features", "None")
+		} else {
+			prompt.PrintAnswered("Features", fmt.Sprintf("%d selected", len(config.Features)))
 		}
 	}
 
@@ -226,6 +232,7 @@ func promptForFeaturesAndDeps(ctx context.Context, preSelectedFeatures []string)
 		if err := input.WithTheme(theme).Run(); err != nil {
 			return nil, err
 		}
+		prompt.PrintAnswered(dep.Title, value)
 		config.Dependencies[dep.ID] = value
 	}
 
@@ -240,10 +247,10 @@ func promptForFeaturesAndDeps(ctx context.Context, preSelectedFeatures []string)
 	if err != nil {
 		return nil, err
 	}
-
 	if config.Description == "" {
 		config.Description = prompt.DefaultAppDescription
 	}
+	prompt.PrintAnswered("Description", config.Description)
 
 	// Step 4: Deploy and run options
 	config.Deploy, config.RunMode, err = prompt.PromptForDeployAndRun()

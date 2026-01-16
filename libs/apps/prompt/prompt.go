@@ -41,6 +41,25 @@ func AppkitTheme() *huh.Theme {
 	return t
 }
 
+// Styles for printing answered prompts.
+var (
+	answeredTitleStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#71717A"))
+	answeredValueStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#FFAB00")).
+				Bold(true)
+)
+
+// PrintAnswered prints a completed prompt answer to keep history visible.
+func PrintAnswered(title, value string) {
+	fmt.Printf("%s %s\n", answeredTitleStyle.Render(title+":"), answeredValueStyle.Render(value))
+}
+
+// printAnswered is an alias for internal use.
+func printAnswered(title, value string) {
+	PrintAnswered(title, value)
+}
+
 // RunMode specifies how to run the app after creation.
 type RunMode string
 
@@ -123,11 +142,9 @@ func PromptForProjectName(outputDir string) (string, error) {
 		Placeholder("my-app").
 		Value(&name).
 		Validate(func(s string) error {
-			// First validate the name format
 			if err := ValidateProjectName(s); err != nil {
 				return err
 			}
-			// Then check if directory already exists
 			destDir := s
 			if outputDir != "" {
 				destDir = filepath.Join(outputDir, s)
@@ -143,6 +160,7 @@ func PromptForProjectName(outputDir string) (string, error) {
 		return "", err
 	}
 
+	printAnswered("Project name", name)
 	return name, nil
 }
 
@@ -187,6 +205,7 @@ func PromptForPluginDependencies(ctx context.Context, deps []features.FeatureDep
 		if err := input.WithTheme(theme).Run(); err != nil {
 			return nil, err
 		}
+		printAnswered(dep.Title, value)
 		result[dep.ID] = value
 	}
 
@@ -207,6 +226,11 @@ func PromptForDeployAndRun() (deploy bool, runMode RunMode, err error) {
 	if err != nil {
 		return false, RunModeNone, err
 	}
+	if deploy {
+		printAnswered("Deploy after creation", "Yes")
+	} else {
+		printAnswered("Deploy after creation", "No")
+	}
 
 	// Run the app?
 	runModeStr := string(RunModeNone)
@@ -225,11 +249,18 @@ func PromptForDeployAndRun() (deploy bool, runMode RunMode, err error) {
 		return false, RunModeNone, err
 	}
 
+	runModeLabels := map[string]string{
+		string(RunModeNone):      "No",
+		string(RunModeDev):       "Yes (local)",
+		string(RunModeDevRemote): "Yes (remote)",
+	}
+	printAnswered("Run after creation", runModeLabels[runModeStr])
+
 	return deploy, RunMode(runModeStr), nil
 }
 
 // PromptForProjectConfig shows an interactive form to gather project configuration.
-// Flow: name -> features -> feature dependencies -> description.
+// Flow: name -> features -> feature dependencies -> description -> deploy/run.
 // If preSelectedFeatures is provided, the feature selection prompt is skipped.
 func PromptForProjectConfig(ctx context.Context, preSelectedFeatures []string) (*CreateProjectConfig, error) {
 	config := &CreateProjectConfig{
@@ -252,6 +283,7 @@ func PromptForProjectConfig(ctx context.Context, preSelectedFeatures []string) (
 	if err != nil {
 		return nil, err
 	}
+	printAnswered("Project name", config.ProjectName)
 
 	// Step 2: Feature selection (skip if features already provided via flag)
 	if len(config.Features) == 0 && len(features.AvailableFeatures) > 0 {
@@ -266,10 +298,16 @@ func PromptForProjectConfig(ctx context.Context, preSelectedFeatures []string) (
 			Description("space to toggle, enter to confirm").
 			Options(options...).
 			Value(&config.Features).
+			Height(8).
 			WithTheme(theme).
 			Run()
 		if err != nil {
 			return nil, err
+		}
+		if len(config.Features) == 0 {
+			printAnswered("Features", "None")
+		} else {
+			printAnswered("Features", fmt.Sprintf("%d selected", len(config.Features)))
 		}
 	}
 
@@ -310,12 +348,12 @@ func PromptForProjectConfig(ctx context.Context, preSelectedFeatures []string) (
 		if err := input.WithTheme(theme).Run(); err != nil {
 			return nil, err
 		}
+		printAnswered(dep.Title, value)
 		config.Dependencies[dep.ID] = value
 	}
 
 	// Step 4: Description
 	config.Description = DefaultAppDescription
-
 	err = huh.NewInput().
 		Title("Description").
 		Placeholder(DefaultAppDescription).
@@ -325,10 +363,10 @@ func PromptForProjectConfig(ctx context.Context, preSelectedFeatures []string) (
 	if err != nil {
 		return nil, err
 	}
-
 	if config.Description == "" {
 		config.Description = DefaultAppDescription
 	}
+	printAnswered("Description", config.Description)
 
 	// Step 5: Deploy after creation?
 	err = huh.NewConfirm().
@@ -339,6 +377,11 @@ func PromptForProjectConfig(ctx context.Context, preSelectedFeatures []string) (
 		Run()
 	if err != nil {
 		return nil, err
+	}
+	if config.Deploy {
+		printAnswered("Deploy after creation", "Yes")
+	} else {
+		printAnswered("Deploy after creation", "No")
 	}
 
 	// Step 6: Run the app?
@@ -358,6 +401,13 @@ func PromptForProjectConfig(ctx context.Context, preSelectedFeatures []string) (
 		return nil, err
 	}
 	config.RunMode = RunMode(runModeStr)
+
+	runModeLabels := map[string]string{
+		string(RunModeNone):      "No",
+		string(RunModeDev):       "Yes (local)",
+		string(RunModeDevRemote): "Yes (remote)",
+	}
+	printAnswered("Run after creation", runModeLabels[runModeStr])
 
 	return config, nil
 }
@@ -393,10 +443,12 @@ func PromptForWarehouse(ctx context.Context) (string, error) {
 
 	// Build options with warehouse name and state
 	options := make([]huh.Option[string], 0, len(warehouses))
+	warehouseNames := make(map[string]string) // id -> name for printing
 	for _, wh := range warehouses {
 		state := string(wh.State)
 		label := fmt.Sprintf("%s (%s)", wh.Name, state)
 		options = append(options, huh.NewOption(label, wh.Id))
+		warehouseNames[wh.Id] = wh.Name
 	}
 
 	var selected string
@@ -406,12 +458,14 @@ func PromptForWarehouse(ctx context.Context) (string, error) {
 		Options(options...).
 		Value(&selected).
 		Filtering(true).
+		Height(8).
 		WithTheme(theme).
 		Run()
 	if err != nil {
 		return "", err
 	}
 
+	printAnswered("SQL Warehouse", warehouseNames[selected])
 	return selected, nil
 }
 
@@ -506,12 +560,14 @@ func PromptForAppSelection(ctx context.Context, title string) (string, error) {
 		Options(options...).
 		Value(&selected).
 		Filtering(true).
+		Height(8).
 		WithTheme(theme).
 		Run()
 	if err != nil {
 		return "", err
 	}
 
+	printAnswered("App", selected)
 	return selected, nil
 }
 

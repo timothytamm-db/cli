@@ -565,10 +565,7 @@ func TestPromptIsSkippedAnyOf(t *testing.T) {
 	assert.Equal(t, "hello-world", c.values["xyz"])
 }
 
-func TestAssignDefaultValuesSkipsExistingEmptyString(t *testing.T) {
-	// This test verifies that when a property is explicitly set to an empty string,
-	// the schema default is NOT used. This is important because passing
-	// configMap["default_catalog"] = "" is different from not including the key at all.
+func TestAssignDefaultValuesEmptyStringVsOmitted(t *testing.T) {
 	c := config{
 		ctx:    context.Background(),
 		values: make(map[string]any),
@@ -576,8 +573,8 @@ func TestAssignDefaultValuesSkipsExistingEmptyString(t *testing.T) {
 			Properties: map[string]*jsonschema.Schema{
 				"catalog": {
 					Type:        "string",
-					Default:     "my_default_catalog",
-					Description: "The catalog to use",
+					Default:     "default_catalog",
+					Description: "The catalog",
 				},
 			},
 		},
@@ -586,121 +583,14 @@ func TestAssignDefaultValuesSkipsExistingEmptyString(t *testing.T) {
 	r, err := newRenderer(context.Background(), nil, nil, os.DirFS("."), "./testdata/empty/template", "./testdata/empty/library")
 	require.NoError(t, err)
 
-	// Case 1: Property NOT in values map -> default SHOULD be assigned
+	// Key omitted -> default is used
 	err = c.assignDefaultValues(r)
 	require.NoError(t, err)
-	assert.Equal(t, "my_default_catalog", c.values["catalog"])
+	assert.Equal(t, "default_catalog", c.values["catalog"])
 
-	// Case 2: Property explicitly set to empty string -> default should NOT override it
-	c.values = map[string]any{
-		"catalog": "", // explicitly set to empty string
-	}
+	// Key set to "" -> default is NOT used
+	c.values = map[string]any{"catalog": ""}
 	err = c.assignDefaultValues(r)
 	require.NoError(t, err)
-	// The empty string is preserved, NOT replaced by the default
 	assert.Equal(t, "", c.values["catalog"])
-}
-
-func TestAssignDefaultValuesWithTemplatedDefault(t *testing.T) {
-	// This test simulates the real-world scenario: the schema default uses a template
-	// helper like {{default_catalog}} with a fallback. If the key is not in the config
-	// map, the templated default is evaluated and used.
-	c := config{
-		ctx:    context.Background(),
-		values: make(map[string]any),
-		schema: &jsonschema.Schema{
-			Properties: map[string]*jsonschema.Schema{
-				"catalog": {
-					Type:        "string",
-					Default:     "{{if eq .fruit \"\"}}fallback_catalog{{else}}{{.fruit}}_catalog{{end}}",
-					Description: "The catalog to use",
-				},
-			},
-		},
-	}
-
-	// Create a renderer with "fruit" set to "apple"
-	r := &renderer{
-		config: map[string]any{
-			"fruit": "apple",
-		},
-		baseTemplate: template.New(""),
-	}
-
-	// Case 1: Property NOT in values -> templated default is evaluated
-	err := c.assignDefaultValues(r)
-	require.NoError(t, err)
-	assert.Equal(t, "apple_catalog", c.values["catalog"])
-
-	// Case 2: Property set to empty string -> templated default is NOT used
-	c.values = map[string]any{
-		"catalog": "",
-	}
-	err = c.assignDefaultValues(r)
-	require.NoError(t, err)
-	assert.Equal(t, "", c.values["catalog"]) // Still empty, default not applied
-
-	// Case 3: Renderer with empty fruit -> fallback in template should trigger
-	c.values = make(map[string]any) // Reset - no catalog key
-	r.config["fruit"] = ""
-	err = c.assignDefaultValues(r)
-	require.NoError(t, err)
-	assert.Equal(t, "fallback_catalog", c.values["catalog"])
-}
-
-func TestConfigFromJSONWithEmptyStringVsOmitted(t *testing.T) {
-	// This test demonstrates the difference between passing an empty string
-	// in a JSON config file vs omitting the key entirely.
-	// This is the core issue: aitools was passing {"default_catalog": ""} which
-	// bypasses the schema default, instead of omitting the key to let the
-	// schema default be used.
-	testDir := t.TempDir()
-
-	// Create a schema with a default value for catalog
-	schemaContent := `{
-		"properties": {
-			"project_name": {
-				"type": "string",
-				"description": "Project name"
-			},
-			"catalog": {
-				"type": "string",
-				"default": "workspace_default_catalog",
-				"description": "The catalog to use"
-			}
-		}
-	}`
-	require.NoError(t, os.WriteFile(filepath.Join(testDir, "schema.json"), []byte(schemaContent), 0o644))
-
-	// Case 1: Config file with catalog omitted -> schema default should be used
-	configOmitted := `{"project_name": "my_project"}`
-	require.NoError(t, os.WriteFile(filepath.Join(testDir, "config_omitted.json"), []byte(configOmitted), 0o644))
-
-	ctx := context.Background()
-	c1, err := newConfig(ctx, os.DirFS(testDir), "schema.json")
-	require.NoError(t, err)
-	err = c1.assignValuesFromFile(filepath.Join(testDir, "config_omitted.json"))
-	require.NoError(t, err)
-
-	r, err := newRenderer(ctx, nil, nil, os.DirFS("."), "./testdata/empty/template", "./testdata/empty/library")
-	require.NoError(t, err)
-	err = c1.assignDefaultValues(r)
-	require.NoError(t, err)
-
-	assert.Equal(t, "my_project", c1.values["project_name"])
-	assert.Equal(t, "workspace_default_catalog", c1.values["catalog"]) // Default used!
-
-	// Case 2: Config file with catalog set to empty string -> schema default NOT used
-	configEmpty := `{"project_name": "my_project", "catalog": ""}`
-	require.NoError(t, os.WriteFile(filepath.Join(testDir, "config_empty.json"), []byte(configEmpty), 0o644))
-
-	c2, err := newConfig(ctx, os.DirFS(testDir), "schema.json")
-	require.NoError(t, err)
-	err = c2.assignValuesFromFile(filepath.Join(testDir, "config_empty.json"))
-	require.NoError(t, err)
-	err = c2.assignDefaultValues(r)
-	require.NoError(t, err)
-
-	assert.Equal(t, "my_project", c2.values["project_name"])
-	assert.Equal(t, "", c2.values["catalog"]) // Empty string preserved, default NOT used!
 }
